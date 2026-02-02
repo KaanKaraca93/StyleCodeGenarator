@@ -57,12 +57,44 @@ class PLMService {
   }
 
   /**
+   * Validate StyleCode format
+   * Correct format: {Brand[1]}{Season[4]}0{Category[3]}{Sequence[3+]}
+   * Minimum length: 12 characters
+   * @param {string} styleCode - StyleCode to validate
+   * @returns {boolean} True if valid
+   */
+  isValidStyleCode(styleCode) {
+    if (!styleCode || typeof styleCode !== 'string') {
+      return false;
+    }
+
+    // Must be at least 12 characters (Brand[1] + Season[4] + 0[1] + Category[3] + Sequence[3])
+    if (styleCode.length < 12) {
+      return false;
+    }
+
+    // Must not contain hyphens (PLM temp format: "20260202-153117788")
+    if (styleCode.includes('-')) {
+      return false;
+    }
+
+    // Basic format check: should start with letter
+    if (!/^[A-Z]/.test(styleCode)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
    * Get all styles with same Season and ProductSubSubCategory
+   * Includes retry logic for incomplete StyleCodes
    * @param {number} seasonId - Season ID
    * @param {number} productSubSubCategoryId - Product Sub Sub Category ID
-   * @returns {Promise<Array>} List of styles
+   * @param {number} retryCount - Current retry attempt (default: 0)
+   * @returns {Promise<Array>} List of styles with valid StyleCodes
    */
-  async getSimilarStyles(seasonId, productSubSubCategoryId) {
+  async getSimilarStyles(seasonId, productSubSubCategoryId, retryCount = 0) {
     const authHeader = await tokenService.getAuthorizationHeader();
     
     const url = `${this.baseUrl}/STYLE`;
@@ -71,7 +103,7 @@ class PLMService {
       $filter: `SeasonId eq ${seasonId} and ProductSubSubCategoryId eq ${productSubSubCategoryId} and IsDeleted eq 0`
     };
 
-    console.log(`🔍 Fetching similar styles:`);
+    console.log(`🔍 Fetching similar styles (Attempt ${retryCount + 1}/3):`);
     console.log(`   SeasonId: ${seasonId}`);
     console.log(`   ProductSubSubCategoryId: ${productSubSubCategoryId}`);
 
@@ -84,9 +116,33 @@ class PLMService {
     });
 
     const styles = response.data.value || [];
-    console.log(`✅ Found ${styles.length} similar styles`);
+    
+    // Validate StyleCodes
+    const invalidStyles = styles.filter(s => !this.isValidStyleCode(s.StyleCode));
+    
+    if (invalidStyles.length > 0 && retryCount < 2) {
+      console.log(`⚠️  Found ${invalidStyles.length} styles with incomplete StyleCodes:`);
+      invalidStyles.forEach(s => {
+        console.log(`   - StyleId: ${s.StyleId}, StyleCode: ${s.StyleCode || 'null'}`);
+      });
+      console.log(`   Waiting 4 seconds before retry...`);
+      
+      // Wait 4 seconds and retry
+      await new Promise(resolve => setTimeout(resolve, 4000));
+      return await this.getSimilarStyles(seasonId, productSubSubCategoryId, retryCount + 1);
+    }
 
-    return styles;
+    // Filter out invalid StyleCodes
+    const validStyles = styles.filter(s => this.isValidStyleCode(s.StyleCode));
+    const filteredCount = styles.length - validStyles.length;
+
+    if (filteredCount > 0) {
+      console.log(`⚠️  Filtered out ${filteredCount} styles with invalid StyleCodes after 3 attempts`);
+    }
+
+    console.log(`✅ Found ${validStyles.length} similar styles with valid StyleCodes`);
+
+    return validStyles;
   }
 
   /**
