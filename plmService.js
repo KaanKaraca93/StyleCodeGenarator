@@ -110,16 +110,11 @@ class PLMService {
     // Find the maximum sequence number from similar styles
     let maxSequence = 0;
 
-    // StyleCode format: {Brand[1]}{Season[4]}0{Category[3]}{Sequence[3+]}
-    // First 9 characters are fixed: Brand(1) + Season(4) + "0"(1) + Category(3)
-    // Everything after position 9 is the sequence number
-    const FIXED_PREFIX_LENGTH = 9;
-
     for (const similarStyle of similarStyles) {
-      if (similarStyle.StyleCode && similarStyle.StyleCode.length > FIXED_PREFIX_LENGTH) {
-        // Extract sequence part (everything after position 9)
-        const sequencePart = similarStyle.StyleCode.substring(FIXED_PREFIX_LENGTH);
-        const sequenceNum = parseInt(sequencePart, 10);
+      if (similarStyle.StyleCode && similarStyle.StyleCode.length >= 3) {
+        // Extract last 3 digits
+        const lastThree = similarStyle.StyleCode.slice(-3);
+        const sequenceNum = parseInt(lastThree, 10);
         
         if (!isNaN(sequenceNum) && sequenceNum > maxSequence) {
           maxSequence = sequenceNum;
@@ -129,10 +124,9 @@ class PLMService {
     }
 
     // Check if current style already has the maximum sequence
-    const FIXED_PREFIX_LENGTH = 9;
-    if (style.StyleCode && style.StyleCode.length > FIXED_PREFIX_LENGTH) {
-      const currentSequencePart = style.StyleCode.substring(FIXED_PREFIX_LENGTH);
-      const currentSequence = parseInt(currentSequencePart, 10);
+    if (style.StyleCode && style.StyleCode.length >= 3) {
+      const currentLastThree = style.StyleCode.slice(-3);
+      const currentSequence = parseInt(currentLastThree, 10);
       
       if (!isNaN(currentSequence) && currentSequence === maxSequence) {
         console.log(`\n✅ Style already has maximum sequence number: ${currentSequence}`);
