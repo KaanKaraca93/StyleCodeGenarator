@@ -23,7 +23,7 @@ class PLMService {
     const params = {
       $select: 'StyleId,StyleCode,PatternSpecNumber',
       $expand: 'ProductSubSubCategory($select=Id,Code,Name),Season($select=Id,Code,Name),Brand($select=Id,Code,Name)',
-      $filter: `StyleId eq ${styleId}`
+      $filter: `StyleId eq ${styleId} and IsDeleted eq 0`
     };
 
     console.log(`🔍 Fetching style details for StyleId: ${styleId}`);
@@ -68,7 +68,7 @@ class PLMService {
     const url = `${this.baseUrl}/STYLE`;
     const params = {
       $select: 'StyleId,StyleCode',
-      $filter: `SeasonId eq ${seasonId} and ProductSubSubCategoryId eq ${productSubSubCategoryId}`
+      $filter: `SeasonId eq ${seasonId} and ProductSubSubCategoryId eq ${productSubSubCategoryId} and IsDeleted eq 0`
     };
 
     console.log(`🔍 Fetching similar styles:`);
@@ -193,6 +193,66 @@ class PLMService {
   }
 
   /**
+   * Sync style to search data (PLM Sync API)
+   * @param {number} styleId - Style ID
+   * @returns {Promise<boolean>} Success status
+   */
+  async syncToSearchData(styleId) {
+    const authHeader = await tokenService.getAuthorizationHeader();
+    
+    const url = 'https://mingle-ionapi.eu1.inforcloudsuite.com/ATJZAMEWEF5P4SNV_TST/FASHIONPLM/job/api/job/tasks';
+    const payload = {
+      TaskId: 'syncSearchData',
+      IsSystem: true,
+      CustomData: [
+        {
+          key: 'cluster',
+          value: 'styleoverview'
+        },
+        {
+          key: 'moduleId',
+          value: styleId.toString()
+        },
+        {
+          key: 'schema',
+          value: 'FSH2'
+        },
+        {
+          key: 'updateOrgLevelPath',
+          value: 'true'
+        }
+      ],
+      Sequence: 1
+    };
+
+    console.log(`\n🔄 Syncing style ${styleId} to search data:`);
+    console.log(`   URL: ${url}`);
+    console.log(`   Payload:`, JSON.stringify(payload, null, 2));
+
+    try {
+      const response = await axios.post(url, payload, {
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+
+      console.log(`✅ Sync task created successfully (HTTP ${response.status})`);
+      console.log(`   Response:`, JSON.stringify(response.data, null, 2));
+      return true;
+    } catch (error) {
+      console.error(`⚠️  Sync task failed (non-critical):`, error.message);
+      if (error.response) {
+        console.error(`   Response status: ${error.response.status}`);
+        console.error(`   Response data:`, JSON.stringify(error.response.data, null, 2));
+      }
+      // Don't throw error - sync is optional
+      return false;
+    }
+  }
+
+  /**
    * Process StyleCode assignment for a style
    * This is the main orchestration method
    * @param {number} styleId - Style ID
@@ -240,6 +300,9 @@ class PLMService {
       // Step 4: Update style
       await this.updateStyle(styleId, generated.StyleCode, generated.PatternSpecNumber);
 
+      // Step 5: Sync to search data
+      const syncSuccess = await this.syncToSearchData(styleId);
+
       const result = {
         success: true,
         styleId: styleId,
@@ -250,11 +313,12 @@ class PLMService {
         brand: style.Brand,
         season: style.Season,
         productSubSubCategory: style.ProductSubSubCategory,
-        similarStylesCount: similarStyles.length
+        similarStylesCount: similarStyles.length,
+        syncedToSearchData: syncSuccess
       };
 
       console.log(`\n${'═'.repeat(70)}`);
-      console.log(`✅ SUCCESS - StyleCode assigned`);
+      console.log(`✅ SUCCESS - StyleCode assigned ${syncSuccess ? '& synced' : '(sync failed)'}`);
       console.log(`${'═'.repeat(70)}`);
 
       return result;
