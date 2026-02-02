@@ -5,6 +5,8 @@
  */
 
 const express = require('express');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./swagger.json');
 const queueService = require('./queueService');
 const plmService = require('./plmService');
 const tokenService = require('./tokenService');
@@ -16,6 +18,12 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Swagger UI
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'StyleCode Numerator API Documentation'
+}));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -36,6 +44,7 @@ app.get('/', (req, res) => {
     tenant: tokenService.getConfigInfo().tenantId,
     endpoints: {
       health: 'GET /',
+      documentation: 'GET /api-docs',
       assignStyleCode: 'POST /api/stylecode/assign',
       assignStyleCodeAsync: 'POST /api/stylecode/assign/async',
       jobStatus: 'GET /api/job/:jobId',
@@ -46,26 +55,63 @@ app.get('/', (req, res) => {
 });
 
 /**
+ * Parse StyleId from PLM format
+ * Accepts: "StyleId eq 36152" or 36152
+ */
+function parseStyleId(input) {
+  if (!input) {
+    return null;
+  }
+
+  // If it's already a number, return it
+  if (typeof input === 'number') {
+    return input;
+  }
+
+  // If it's a string number, parse it
+  if (typeof input === 'string') {
+    // Check if it's in PLM format: "StyleId eq 36152"
+    const match = input.match(/StyleId\s+eq\s+(\d+)/i);
+    if (match) {
+      return parseInt(match[1], 10);
+    }
+
+    // Try to parse as plain number string
+    const parsed = parseInt(input, 10);
+    if (!isNaN(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Assign StyleCode to a style (Synchronous)
  * POST /api/stylecode/assign
- * Body: { "styleId": 10468 }
+ * Body: { "StyleId": "StyleId eq 36152" } or { "styleId": 36152 }
  * 
  * ⚠️  WARNING: May timeout on Heroku if queue is long (30s limit)
  * Use /api/stylecode/assign/async for production
  */
 app.post('/api/stylecode/assign', async (req, res) => {
   try {
-    const { styleId } = req.body;
+    // Support both "StyleId" (PLM format) and "styleId" (direct format)
+    const styleIdInput = req.body.StyleId || req.body.styleId;
+
+    const styleId = parseStyleId(styleIdInput);
 
     if (!styleId) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required field: styleId'
+        error: 'Missing or invalid required field: StyleId',
+        received: styleIdInput
       });
     }
 
     console.log(`\n📨 New StyleCode assignment request received (SYNC)`);
-    console.log(`   StyleId: ${styleId}`);
+    console.log(`   Raw input: ${styleIdInput}`);
+    console.log(`   Parsed StyleId: ${styleId}`);
     console.log(`   Request IP: ${req.ip}`);
 
     // Add to queue and wait for result
@@ -94,24 +140,29 @@ app.post('/api/stylecode/assign', async (req, res) => {
 /**
  * Assign StyleCode to a style (Asynchronous - Recommended for Heroku)
  * POST /api/stylecode/assign/async
- * Body: { "styleId": 10468 }
+ * Body: { "StyleId": "StyleId eq 36152" } or { "styleId": 36152 }
  * 
  * Returns immediately with jobId, client polls /api/job/:jobId for status
  * ✅ Prevents Heroku 30s timeout
  */
 app.post('/api/stylecode/assign/async', async (req, res) => {
   try {
-    const { styleId } = req.body;
+    // Support both "StyleId" (PLM format) and "styleId" (direct format)
+    const styleIdInput = req.body.StyleId || req.body.styleId;
+
+    const styleId = parseStyleId(styleIdInput);
 
     if (!styleId) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required field: styleId'
+        error: 'Missing or invalid required field: StyleId',
+        received: styleIdInput
       });
     }
 
     console.log(`\n📨 New StyleCode assignment request received (ASYNC)`);
-    console.log(`   StyleId: ${styleId}`);
+    console.log(`   Raw input: ${styleIdInput}`);
+    console.log(`   Parsed StyleId: ${styleId}`);
     console.log(`   Request IP: ${req.ip}`);
 
     // Create job
@@ -141,6 +192,7 @@ app.post('/api/stylecode/assign/async', async (req, res) => {
       success: true,
       message: 'StyleCode assignment job created',
       jobId: jobId,
+      styleId: styleId,
       statusUrl: `/api/job/${jobId}`,
       polling: {
         recommended_interval: '2s',
@@ -262,16 +314,27 @@ app.post('/api/token/refresh', async (req, res) => {
 /**
  * Batch StyleCode assignment
  * POST /api/stylecode/assign/batch
- * Body: { "styleIds": [10468, 10469, 10470] }
+ * Body: { "styleIds": ["StyleId eq 36152", "StyleId eq 36153"] } or { "styleIds": [36152, 36153] }
  */
 app.post('/api/stylecode/assign/batch', async (req, res) => {
   try {
-    const { styleIds } = req.body;
+    const { styleIds: styleIdsInput } = req.body;
 
-    if (!styleIds || !Array.isArray(styleIds) || styleIds.length === 0) {
+    if (!styleIdsInput || !Array.isArray(styleIdsInput) || styleIdsInput.length === 0) {
       return res.status(400).json({
         success: false,
         error: 'Missing or invalid field: styleIds (must be non-empty array)'
+      });
+    }
+
+    // Parse all StyleIds
+    const styleIds = styleIdsInput.map(parseStyleId).filter(id => id !== null);
+
+    if (styleIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No valid StyleIds found in the request',
+        received: styleIdsInput
       });
     }
 
@@ -366,6 +429,7 @@ app.listen(PORT, () => {
   console.log('🚀 StyleCode Numerator API Server Started');
   console.log('═'.repeat(70));
   console.log(`📍 Server URL: http://localhost:${PORT}`);
+  console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
   console.log(`🌍 Environment: ${tokenService.getConfigInfo().environment}`);
   console.log(`🏢 Tenant: ${tokenService.getConfigInfo().tenantId}`);
   console.log(`⚙️  Optimized for: Heroku Basic Dyno (single instance)`);

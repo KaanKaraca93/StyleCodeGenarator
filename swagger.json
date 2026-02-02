@@ -1,0 +1,863 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "StyleCode Numerator API",
+    "version": "1.0.0",
+    "description": "Infor PLM StyleCode automatic assignment API with queue management and async processing. Prevents duplicate StyleCode assignments through sequential processing.",
+    "contact": {
+      "name": "API Support"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://stylecodegenarator-ace23e9da68a.herokuapp.com",
+      "description": "Production Server"
+    },
+    {
+      "url": "http://localhost:3001",
+      "description": "Local Development Server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "StyleCode",
+      "description": "StyleCode assignment operations"
+    },
+    {
+      "name": "Jobs",
+      "description": "Async job management"
+    },
+    {
+      "name": "Queue",
+      "description": "Queue statistics and management"
+    },
+    {
+      "name": "Token",
+      "description": "OAuth2 token management"
+    },
+    {
+      "name": "System",
+      "description": "System health and info"
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Health check and API information",
+        "description": "Returns API status, version, and available endpoints",
+        "responses": {
+          "200": {
+            "description": "API is running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {
+                      "type": "string",
+                      "example": "StyleCode Numerator API"
+                    },
+                    "version": {
+                      "type": "string",
+                      "example": "1.0.0"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "running"
+                    },
+                    "environment": {
+                      "type": "string",
+                      "example": "TEST"
+                    },
+                    "tenant": {
+                      "type": "string",
+                      "example": "ATJZAMEWEF5P4SNV_TST"
+                    },
+                    "endpoints": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stylecode/assign": {
+      "post": {
+        "tags": ["StyleCode"],
+        "summary": "Assign StyleCode (Synchronous)",
+        "description": "⚠️ WARNING: May timeout on Heroku if queue is long (30s limit). Use /api/stylecode/assign/async for production. Assigns StyleCode to a style synchronously. Waits for completion before returning.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": ["StyleId"],
+                    "properties": {
+                      "StyleId": {
+                        "type": "string",
+                        "description": "Style ID in PLM format",
+                        "example": "StyleId eq 36152"
+                      },
+                      "RefId": {
+                        "type": "string",
+                        "description": "Reference ID (optional)",
+                        "example": "RefId eq 36152"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["styleId"],
+                    "properties": {
+                      "styleId": {
+                        "type": "integer",
+                        "description": "Style ID as number (alternative format)",
+                        "example": 36152
+                      }
+                    }
+                  }
+                ]
+              },
+              "examples": {
+                "PLM Format": {
+                  "value": {
+                    "StyleId": "StyleId eq 36152",
+                    "RefId": "RefId eq 36152"
+                  }
+                },
+                "Direct Format": {
+                  "value": {
+                    "styleId": 36152
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StyleCode assigned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleCodeAssignmentResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Missing styleId",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stylecode/assign/async": {
+      "post": {
+        "tags": ["StyleCode"],
+        "summary": "Assign StyleCode (Asynchronous - RECOMMENDED)",
+        "description": "✅ Recommended for production. Returns immediately with jobId. Client polls /api/job/{jobId} for status. Prevents Heroku 30s timeout.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": ["StyleId"],
+                    "properties": {
+                      "StyleId": {
+                        "type": "string",
+                        "description": "Style ID in PLM format",
+                        "example": "StyleId eq 36152"
+                      },
+                      "RefId": {
+                        "type": "string",
+                        "description": "Reference ID (optional)",
+                        "example": "RefId eq 36152"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["styleId"],
+                    "properties": {
+                      "styleId": {
+                        "type": "integer",
+                        "description": "Style ID as number (alternative format)",
+                        "example": 36152
+                      }
+                    }
+                  }
+                ]
+              },
+              "examples": {
+                "PLM Format": {
+                  "value": {
+                    "StyleId": "StyleId eq 36152",
+                    "RefId": "RefId eq 36152"
+                  }
+                },
+                "Direct Format": {
+                  "value": {
+                    "styleId": 36152
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Job created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "StyleCode assignment job created"
+                    },
+                    "jobId": {
+                      "type": "string",
+                      "example": "job_1770042427163_ugne3yi8z"
+                    },
+                    "statusUrl": {
+                      "type": "string",
+                      "example": "/api/job/job_1770042427163_ugne3yi8z"
+                    },
+                    "polling": {
+                      "type": "object",
+                      "properties": {
+                        "recommended_interval": {
+                          "type": "string",
+                          "example": "2s"
+                        },
+                        "max_wait_time": {
+                          "type": "string",
+                          "example": "60s"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stylecode/assign/batch": {
+      "post": {
+        "tags": ["StyleCode"],
+        "summary": "Assign StyleCode to multiple styles (Batch)",
+        "description": "Assigns StyleCode to multiple styles. All styles are processed sequentially through the queue.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["styleIds"],
+                "properties": {
+                  "styleIds": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "example": "StyleId eq 36152"
+                        },
+                        {
+                          "type": "integer",
+                          "example": 36152
+                        }
+                      ]
+                    },
+                    "description": "Array of Style IDs (PLM format or direct numbers)"
+                  }
+                }
+              },
+              "examples": {
+                "PLM Format": {
+                  "value": {
+                    "styleIds": ["StyleId eq 36152", "StyleId eq 36153", "StyleId eq 36154"]
+                  }
+                },
+                "Direct Format": {
+                  "value": {
+                    "styleIds": [36152, 36153, 36154]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Batch processing completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Batch processing completed: 2 succeeded, 1 failed"
+                    },
+                    "summary": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "integer",
+                          "example": 3
+                        },
+                        "succeeded": {
+                          "type": "integer",
+                          "example": 2
+                        },
+                        "failed": {
+                          "type": "integer",
+                          "example": 1
+                        }
+                      }
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/StyleCodeAssignmentResult"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/job/{jobId}": {
+      "get": {
+        "tags": ["Jobs"],
+        "summary": "Get job status",
+        "description": "Retrieves the status and result of an async job",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Job ID returned from async endpoint",
+            "example": "job_1770042427163_ugne3yi8z"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "tags": ["Jobs"],
+        "summary": "Get all jobs",
+        "description": "Retrieves all jobs, optionally filtered by status",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["pending", "processing", "completed", "failed"]
+            },
+            "description": "Filter by job status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Jobs retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "count": {
+                      "type": "integer",
+                      "example": 5
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Job"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/stats": {
+      "get": {
+        "tags": ["Jobs"],
+        "summary": "Get job statistics",
+        "description": "Returns statistics about jobs (total, pending, processing, completed, failed)",
+        "responses": {
+          "200": {
+            "description": "Job statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "integer",
+                          "example": 10
+                        },
+                        "pending": {
+                          "type": "integer",
+                          "example": 2
+                        },
+                        "processing": {
+                          "type": "integer",
+                          "example": 1
+                        },
+                        "completed": {
+                          "type": "integer",
+                          "example": 6
+                        },
+                        "failed": {
+                          "type": "integer",
+                          "example": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/queue/stats": {
+      "get": {
+        "tags": ["Queue"],
+        "summary": "Get queue statistics",
+        "description": "Returns statistics about the processing queue",
+        "responses": {
+          "200": {
+            "description": "Queue statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "integer",
+                          "example": 10
+                        },
+                        "completed": {
+                          "type": "integer",
+                          "example": 8
+                        },
+                        "failed": {
+                          "type": "integer",
+                          "example": 1
+                        },
+                        "inProgress": {
+                          "type": "integer",
+                          "example": 1
+                        },
+                        "queueSize": {
+                          "type": "integer",
+                          "example": 3
+                        },
+                        "isProcessing": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "pendingTasks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/token/info": {
+      "get": {
+        "tags": ["Token"],
+        "summary": "Get token information",
+        "description": "Returns information about the OAuth2 token (validity, expiry, etc.)",
+        "responses": {
+          "200": {
+            "description": "Token information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "token": {
+                          "type": "object",
+                          "properties": {
+                            "environment": {
+                              "type": "string",
+                              "example": "TEST"
+                            },
+                            "tenantId": {
+                              "type": "string",
+                              "example": "ATJZAMEWEF5P4SNV_TST"
+                            },
+                            "hasToken": {
+                              "type": "boolean",
+                              "example": true
+                            },
+                            "isValid": {
+                              "type": "boolean",
+                              "example": true
+                            },
+                            "expiryTime": {
+                              "type": "string",
+                              "example": "2026-02-02T16:18:37.657Z"
+                            }
+                          }
+                        },
+                        "config": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/token/refresh": {
+      "post": {
+        "tags": ["Token"],
+        "summary": "Refresh OAuth2 token",
+        "description": "Forces a refresh of the OAuth2 token",
+        "responses": {
+          "200": {
+            "description": "Token refreshed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Token refreshed successfully"
+                    },
+                    "data": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "StyleCodeAssignmentResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "StyleCode assigned successfully"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "example": true
+              },
+              "styleId": {
+                "type": "integer",
+                "example": 10468
+              },
+              "skipped": {
+                "type": "boolean",
+                "example": false,
+                "description": "True if style already has maximum sequence number"
+              },
+              "reason": {
+                "type": "string",
+                "example": "Style already has maximum sequence number",
+                "description": "Present when skipped=true"
+              },
+              "oldStyleCode": {
+                "type": "string",
+                "example": "TW6260004112"
+              },
+              "newStyleCode": {
+                "type": "string",
+                "example": "TW6260004113"
+              },
+              "currentStyleCode": {
+                "type": "string",
+                "example": "TW6260004114",
+                "description": "Present when skipped=true"
+              },
+              "patternSpecNumber": {
+                "type": "string",
+                "example": "TW6260004113"
+              },
+              "brand": {
+                "type": "object",
+                "properties": {
+                  "Id": {
+                    "type": "integer",
+                    "example": 8
+                  },
+                  "Code": {
+                    "type": "string",
+                    "example": "T005"
+                  },
+                  "Name": {
+                    "type": "string",
+                    "example": "TWIST"
+                  }
+                }
+              },
+              "season": {
+                "type": "object",
+                "properties": {
+                  "Id": {
+                    "type": "integer",
+                    "example": 10
+                  },
+                  "Code": {
+                    "type": "string",
+                    "example": "46"
+                  },
+                  "Name": {
+                    "type": "string",
+                    "example": "W626-FW 26/27"
+                  }
+                }
+              },
+              "productSubSubCategory": {
+                "type": "object",
+                "properties": {
+                  "Id": {
+                    "type": "integer",
+                    "example": 43
+                  },
+                  "Code": {
+                    "type": "string",
+                    "example": "004"
+                  },
+                  "Name": {
+                    "type": "string",
+                    "example": "ETEK"
+                  }
+                }
+              },
+              "similarStylesCount": {
+                "type": "integer",
+                "example": 15
+              }
+            }
+          }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "example": "job_1770042427163_ugne3yi8z"
+              },
+              "type": {
+                "type": "string",
+                "example": "stylecode_assignment"
+              },
+              "payload": {
+                "type": "object",
+                "properties": {
+                  "styleId": {
+                    "type": "integer",
+                    "example": 10468
+                  }
+                }
+              },
+              "status": {
+                "type": "string",
+                "enum": ["pending", "processing", "completed", "failed"],
+                "example": "completed"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time",
+                "example": "2026-02-02T14:27:07.163Z"
+              },
+              "startedAt": {
+                "type": "string",
+                "format": "date-time",
+                "example": "2026-02-02T14:27:07.163Z"
+              },
+              "completedAt": {
+                "type": "string",
+                "format": "date-time",
+                "example": "2026-02-02T14:27:08.184Z"
+              },
+              "result": {
+                "type": "object",
+                "description": "Present when status=completed"
+              },
+              "error": {
+                "type": "string",
+                "description": "Present when status=failed"
+              },
+              "duration": {
+                "type": "string",
+                "example": "1021ms"
+              }
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "string",
+            "example": "Missing required field: styleId"
+          },
+          "details": {
+            "type": "object",
+            "description": "Additional error details"
+          }
+        }
+      }
+    }
+  }
+}
