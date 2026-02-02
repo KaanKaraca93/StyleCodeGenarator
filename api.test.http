@@ -1,0 +1,98 @@
+### StyleCode Numerator API Test File
+### Use this with REST Client extension in VS Code or similar tools
+
+@baseUrl = http://localhost:3001
+
+###############################################################################
+# Health Check & Info
+###############################################################################
+
+### 1. Health check
+GET {{baseUrl}}/ HTTP/1.1
+
+###############################################################################
+# Token Management
+###############################################################################
+
+### 2. Get token info
+GET {{baseUrl}}/api/token/info HTTP/1.1
+
+### 3. Refresh token
+POST {{baseUrl}}/api/token/refresh HTTP/1.1
+
+###############################################################################
+# StyleCode Assignment (Single)
+###############################################################################
+
+### 4. Assign StyleCode to a single style
+POST {{baseUrl}}/api/stylecode/assign HTTP/1.1
+Content-Type: application/json
+
+{
+  "styleId": 10468
+}
+
+### 5. Assign StyleCode to another style
+POST {{baseUrl}}/api/stylecode/assign HTTP/1.1
+Content-Type: application/json
+
+{
+  "styleId": 10469
+}
+
+### 5b. Assign StyleCode (ASYNC - Recommended for Heroku)
+POST {{baseUrl}}/api/stylecode/assign/async HTTP/1.1
+Content-Type: application/json
+
+{
+  "styleId": 10468
+}
+
+### 5c. Check Job Status (replace :jobId with actual job ID from above)
+GET {{baseUrl}}/api/job/job_1234567890_abcdef HTTP/1.1
+
+###############################################################################
+# StyleCode Assignment (Batch)
+###############################################################################
+
+### 6. Assign StyleCode to multiple styles (batch)
+POST {{baseUrl}}/api/stylecode/assign/batch HTTP/1.1
+Content-Type: application/json
+
+{
+  "styleIds": [10468, 10469, 10470]
+}
+
+###############################################################################
+# Queue Management
+###############################################################################
+
+### 7. Get all jobs
+GET {{baseUrl}}/api/jobs HTTP/1.1
+
+### 7b. Get job statistics
+GET {{baseUrl}}/api/jobs/stats HTTP/1.1
+
+### 7c. Get queue statistics
+GET {{baseUrl}}/api/queue/stats HTTP/1.1
+
+### 8. Clear queue (testing only)
+POST {{baseUrl}}/api/queue/clear HTTP/1.1
+
+### 9. Reset queue statistics (testing only)
+POST {{baseUrl}}/api/queue/reset-stats HTTP/1.1
+
+###############################################################################
+# Error Cases
+###############################################################################
+
+### 10. Missing styleId (should return 400)
+POST {{baseUrl}}/api/stylecode/assign HTTP/1.1
+Content-Type: application/json
+
+{
+  "wrongField": 123
+}
+
+### 11. Invalid endpoint (should return 404)
+GET {{baseUrl}}/api/invalid/endpoint HTTP/1.1

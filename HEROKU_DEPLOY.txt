@@ -1,0 +1,112 @@
+═══════════════════════════════════════════════════════════════════
+HEROKU DEPLOYMENT GUIDE
+═══════════════════════════════════════════════════════════════════
+
+📦 HEROKU KURULUMU:
+
+1. Heroku hesabı oluştur (heroku.com)
+2. Heroku CLI kur: https://devcenter.heroku.com/articles/heroku-cli
+
+═══════════════════════════════════════════════════════════════════
+🚀 DEPLOYMENT ADIMLARI:
+═══════════════════════════════════════════════════════════════════
+
+1. Git repository oluştur:
+   git init
+   git add .
+   git commit -m "Initial commit - StyleCode Numerator"
+
+2. Heroku app oluştur:
+   heroku create ipekyol-stylecode-numerator
+
+3. Deploy et:
+   git push heroku master
+
+4. Dyno açık olduğundan emin ol:
+   heroku ps:scale web=1
+
+5. Logları kontrol et:
+   heroku logs --tail
+
+═══════════════════════════════════════════════════════════════════
+⚙️ HEROKU KONFIGÜRASYONU:
+═══════════════════════════════════════════════════════════════════
+
+Dyno Type: Basic ($7/month) veya Hobby ($0/month ilk başta)
+
+NOT: Basic Dyno tek instance olduğu için in-memory queue yeterli!
+
+═══════════════════════════════════════════════════════════════════
+⚡ TIMEOUT YÖNETİMİ:
+═══════════════════════════════════════════════════════════════════
+
+Heroku 30 saniye HTTP timeout uygular!
+
+✅ ÇÖZÜM: Async endpoint kullan
+
+// ❌ KULLANMA (uzun queue'de timeout risk)
+POST /api/stylecode/assign
+
+// ✅ KULLAN (async, timeout yok)
+POST /api/stylecode/assign/async
+
+Async kullanımı:
+1. POST isteği at -> jobId al
+2. Her 2 saniyede bir GET /api/job/:jobId ile status kontrol et
+3. status="completed" olunca result al
+
+═══════════════════════════════════════════════════════════════════
+📊 QUEUE YÖNETİMİ:
+═══════════════════════════════════════════════════════════════════
+
+- Her istek sırayla işlenir (sequential)
+- Aynı anda birden fazla model açılsa bile DUPLICATE KOD YOK!
+- Basic dyno tek instance = in-memory queue yeterli
+- Job history: Son 1000 job memory'de tutulur
+
+═══════════════════════════════════════════════════════════════════
+🔢 NUMERATÖR MANTĞI:
+═══════════════════════════════════════════════════════════════════
+
+Format: {Brand[0]}{Season[0:4]}0{SubSubCategory[0:3]}{Sequence[3]}
+
+Örnek: TW6260004112
+- T: Brand.Code ilk karakter (TWIST)
+- W626: Season.Name ilk 4 karakter
+- 0: Sabit
+- 004: ProductSubSubCategory.Code ilk 3 karakter
+- 112: Sayı serisi
+
+✅ AKILLI GÜNCELLEME:
+- Ürün zaten MAX sequence'a sahipse -> ATLA (sayı tüketme)
+- Ürün daha düşük sequence'a sahipse -> YENİ KOD ATAR
+
+═══════════════════════════════════════════════════════════════════
+🔐 GÜVENLİK:
+═══════════════════════════════════════════════════════════════════
+
+- Token otomatik yenilenir (2 saat geçerlilik)
+- BackendServisi.ionapi dosyasındaki credentials kullanılır
+- TEST ortamı: ATJZAMEWEF5P4SNV_TST
+
+═══════════════════════════════════════════════════════════════════
+📡 API ENDPOINTS:
+═══════════════════════════════════════════════════════════════════
+
+GET  /                              Health check
+POST /api/stylecode/assign/async    StyleCode ata (ASYNC - ÖNERİLEN)
+GET  /api/job/:jobId                Job durumu sorgula
+GET  /api/jobs/stats                Job istatistikleri
+GET  /api/queue/stats               Queue istatistikleri
+
+═══════════════════════════════════════════════════════════════════
+🧪 LOCAL TEST:
+═══════════════════════════════════════════════════════════════════
+
+npm install
+npm start
+
+Test:
+npm run test:stylecode
+
+═══════════════════════════════════════════════════════════════════
